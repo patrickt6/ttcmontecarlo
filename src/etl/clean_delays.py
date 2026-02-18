@@ -2,7 +2,7 @@
 Clean TTC Delay Data — Station Name Canonicalization + Code Categorization.
 
 Loads all raw delay CSVs, applies Regex-based station name cleaning and
-delay code categorization, and outputs a cleaned DataFrame.
+delay code categorization, merges weather data, and outputs a clean Parquet file.
 
 Usage:
     python -m src.etl.clean_delays
@@ -10,10 +10,12 @@ Usage:
 
 import re
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DELAYS_DIR = PROJECT_ROOT / "data" / "raw" / "delays"
+RAW_WEATHER_DIR = PROJECT_ROOT / "data" / "raw" / "weather"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 # ============================================================================
@@ -142,7 +144,7 @@ def categorize_code(code: str) -> str:
 
 
 # ============================================================================
-# ETL Pipeline
+# Main ETL Pipeline
 # ============================================================================
 
 def load_raw_delays() -> pd.DataFrame:
@@ -165,7 +167,7 @@ def load_raw_delays() -> pd.DataFrame:
             else:
                 df = pd.read_excel(f)
             frames.append(df)
-            print(f"  Loaded {f.name}: {len(df):,} rows")
+            print(f"  Loaded {f.name}: {len(df):,} rows, cols={list(df.columns)}")
         except Exception as e:
             print(f"  WARNING: Failed to load {f.name}: {e}")
 
@@ -174,8 +176,22 @@ def load_raw_delays() -> pd.DataFrame:
     return raw
 
 
-def clean_delays(raw: pd.DataFrame) -> pd.DataFrame:
-    """Apply regex normalization, datetime parsing, and code categorization."""
+def load_weather() -> pd.DataFrame | None:
+    """Load cached weather data if available."""
+    weather_path = RAW_WEATHER_DIR / "weather.csv"
+    if not weather_path.exists():
+        print("[clean_delays] No weather data found. Run `python -m src.etl.fetch_weather` first.")
+        print("[clean_delays] Proceeding without weather columns.")
+        return None
+
+    weather = pd.read_csv(weather_path)
+    weather["date"] = pd.to_datetime(weather["date"])
+    print(f"  Loaded weather data: {len(weather):,} rows")
+    return weather
+
+
+def clean_delays(raw: pd.DataFrame, weather: pd.DataFrame | None) -> pd.DataFrame:
+    """Apply all cleaning transformations and merge weather."""
     df = raw.copy()
 
     # --- Parse dates ---
@@ -201,10 +217,13 @@ def clean_delays(raw: pd.DataFrame) -> pd.DataFrame:
     # --- Clean station names ---
     print("[clean_delays] Cleaning station names...")
     df["station"] = df["Station"].apply(clean_station)
-    print(f"  Unique stations after cleaning: {df['station'].nunique()}")
+    n_unique = df["station"].nunique()
+    print(f"  Unique stations after cleaning: {n_unique}")
 
-    # --- Line and bound ---
+    # --- Line ---
     df["line"] = df["Line"].astype(str).str.strip().str.upper()
+
+    # --- Bound ---
     df["bound"] = df["Bound"].astype(str).str.strip().str.upper()
 
     # --- Delay and gap minutes ---
@@ -221,11 +240,31 @@ def clean_delays(raw: pd.DataFrame) -> pd.DataFrame:
     for cat, count in cat_counts.items():
         print(f"    {cat}: {count:,}")
 
+    # --- Merge weather ---
+    if weather is not None:
+        print("[clean_delays] Merging weather data...")
+        weather_cols = weather.rename(columns={
+            "temperature_2m_mean": "temp_mean_c",
+            "precipitation_sum": "precip_mm",
+            "snowfall_sum": "snow_cm",
+            "rain_sum": "rain_mm",
+            "wind_speed_10m_max": "wind_max_kmh",
+        })
+        df = df.merge(weather_cols, on="date", how="left")
+    else:
+        df["temp_mean_c"] = np.nan
+        df["precip_mm"] = np.nan
+        df["snow_cm"] = np.nan
+        df["rain_mm"] = np.nan
+        df["wind_max_kmh"] = np.nan
+
+    # --- Select final columns ---
     output_columns = [
         "date", "time_str", "hour", "day_of_week", "is_weekday",
         "station", "line", "bound",
         "delay_minutes", "gap_minutes",
         "code_raw", "code_category",
+        "temp_mean_c", "precip_mm", "snow_cm", "wind_max_kmh",
     ]
     output_columns = [c for c in output_columns if c in df.columns]
     result = df[output_columns].copy()
@@ -235,22 +274,28 @@ def clean_delays(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def main():
+    """Main entry point: clean raw delays and output Parquet."""
     print("=" * 60)
-    print("TTC Monte Carlo — Clean Delay Data")
+    print("TTC Monte Carlo Risk Simulator — Clean Delay Data")
     print("=" * 60)
 
-    print("\n[1/2] Loading raw delay files...")
+    print("\n[1/3] Loading raw delay CSVs...")
     raw = load_raw_delays()
 
-    print("\n[2/2] Cleaning and transforming...")
-    clean = clean_delays(raw)
+    print("\n[2/3] Loading weather data...")
+    weather = load_weather()
+
+    print("\n[3/3] Cleaning and transforming...")
+    clean = clean_delays(raw, weather)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    out = PROCESSED_DIR / "delays_clean.csv"
-    clean.to_csv(out, index=False)
+    output_path = PROCESSED_DIR / "delays_clean.parquet"
+    clean.to_parquet(output_path, index=False)
 
-    print(f"\nDone. {len(clean):,} rows → {out}")
-    print(f"Date range: {clean['date'].min()} to {clean['date'].max()}")
+    print(f"\nDone. Clean data saved to {output_path}")
+    print(f"   Total clean rows: {len(clean):,}")
+    print(f"   Date range: {clean['date'].min()} to {clean['date'].max()}")
+    print(f"   Columns: {list(clean.columns)}")
 
 
 if __name__ == "__main__":
