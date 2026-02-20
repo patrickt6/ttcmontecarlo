@@ -1,10 +1,13 @@
 """
 TTC Monte Carlo Risk Simulator — FastAPI Backend.
 
-Serves the Monte Carlo simulation engine over HTTP.
+Serves the Monte Carlo simulation as a REST API.
+Pre-loads cleaned delay data into memory on startup for fast simulation.
 
 Endpoints:
     GET  /api/stations  — List available stations on Line 1
+    POST /api/simulate  — Run Monte Carlo simulation for a route
+    GET  /health        — Health check
 
 Usage:
     uvicorn api.main:app --reload --port 8000
@@ -12,20 +15,56 @@ Usage:
 
 import sys
 from pathlib import Path
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.simulation.station_graph import LINE_1_STATIONS
+from src.simulation.station_graph import LINE_1_STATIONS, get_route, BASELINE_SEGMENT_TIME
+from src.simulation.monte_carlo import MonteCarloSimulator
 
+# ===========================================================================
+# Data store — loaded on startup
+# ===========================================================================
+_delay_data: pd.DataFrame | None = None
+_simulator: MonteCarloSimulator | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load delay data into memory on startup."""
+    global _delay_data, _simulator
+
+    parquet_path = PROJECT_ROOT / "data" / "processed" / "delays_clean.parquet"
+    if not parquet_path.exists():
+        print(f"ERROR: {parquet_path} not found. Run ETL pipeline first.")
+        sys.exit(1)
+
+    print(f"[api] Loading delay data from {parquet_path}...")
+    _delay_data = pd.read_parquet(parquet_path)
+    _simulator = MonteCarloSimulator(_delay_data, n_runs=10_000)
+    print(f"[api] Loaded {len(_delay_data):,} rows. Distributions built.")
+
+    yield
+
+    _delay_data = None
+    _simulator = None
+
+
+# ===========================================================================
+# App
+# ===========================================================================
 app = FastAPI(
     title="TTC Monte Carlo Risk Simulator",
     description="Answers: What is the probability I arrive on time?",
-    version="0.1.0",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -37,12 +76,47 @@ app.add_middleware(
 )
 
 
+# ===========================================================================
+# Models
+# ===========================================================================
 class StationInfo(BaseModel):
     name: str
     index: int
     line: str
 
 
+class SimulateRequest(BaseModel):
+    origin: str = Field(..., examples=["Finch"])
+    destination: str = Field(..., examples=["Union"])
+    hour: int = Field(..., ge=0, le=23, examples=[8])
+    is_weekday: bool = Field(True)
+    runs: int = Field(10_000, ge=100, le=50_000)
+    threshold: float = Field(35.0, gt=0)
+
+
+class SimulateResponse(BaseModel):
+    origin: str
+    destination: str
+    n_stations: int
+    n_segments: int
+    baseline_min: float
+    mean_travel_min: float
+    median_travel_min: float
+    std_travel_min: float
+    p5_travel_min: float
+    p95_travel_min: float
+    p99_travel_min: float
+    worst_case_min: float
+    threshold_min: float
+    prob_on_time: float
+    prob_late: float
+    histogram_bins: list[float]
+    histogram_counts: list[float]
+
+
+# ===========================================================================
+# Endpoints
+# ===========================================================================
 @app.get("/api/stations", response_model=list[StationInfo])
 async def get_stations():
     """List all stations on Line 1 (Yonge-University)."""
@@ -50,3 +124,59 @@ async def get_stations():
         StationInfo(name=name, index=i, line="YU")
         for i, name in enumerate(LINE_1_STATIONS)
     ]
+
+
+@app.post("/api/simulate", response_model=SimulateResponse)
+async def simulate(req: SimulateRequest):
+    """Run a Monte Carlo simulation for a route and return results."""
+    if _simulator is None:
+        raise HTTPException(status_code=503, detail="Data not loaded yet")
+
+    try:
+        route = get_route(req.origin, req.destination, LINE_1_STATIONS)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    n_stations = len(route)
+    n_segments = n_stations - 1
+    baseline = n_segments * BASELINE_SEGMENT_TIME
+
+    sim = MonteCarloSimulator(_delay_data, n_runs=req.runs) if req.runs != _simulator.n_runs else _simulator
+    travel_times = sim.simulate(
+        origin=req.origin,
+        destination=req.destination,
+        departure_hour=req.hour,
+        is_weekday=req.is_weekday,
+        line=LINE_1_STATIONS,
+    )
+    stats = sim.summary_stats(travel_times, req.threshold)
+    hist_counts, hist_edges = np.histogram(travel_times, bins=50, density=True)
+
+    return SimulateResponse(
+        origin=req.origin,
+        destination=req.destination,
+        n_stations=n_stations,
+        n_segments=n_segments,
+        baseline_min=baseline,
+        mean_travel_min=round(stats["mean_travel_min"], 1),
+        median_travel_min=round(stats["median_travel_min"], 1),
+        std_travel_min=round(stats["std_travel_min"], 1),
+        p5_travel_min=round(stats["p5_travel_min"], 1),
+        p95_travel_min=round(stats["p95_travel_min"], 1),
+        p99_travel_min=round(stats["p99_travel_min"], 1),
+        worst_case_min=round(stats["worst_case_min"], 1),
+        threshold_min=req.threshold,
+        prob_on_time=round(stats["prob_on_time"], 4),
+        prob_late=round(stats["prob_late"], 4),
+        histogram_bins=[round(float(x), 2) for x in hist_edges.tolist()],
+        histogram_counts=[round(float(x), 6) for x in hist_counts.tolist()],
+    )
+
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "data_loaded": _delay_data is not None,
+        "rows": len(_delay_data) if _delay_data is not None else 0,
+    }
