@@ -1,0 +1,107 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #fff;
+  color: #111;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 580px;
+  margin: 0 auto;
+  padding: 48px 20px 80px;
+}
+
+h1 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 36px;
+}
+
+/* ── FORM ─────────────────────────────────────────── */
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.field select {
+  width: 100%;
+  padding: 5px 7px;
+  font-family: inherit;
+  font-size: 13px;
+  border: 1px solid #bbb;
+  background: #fff;
+  color: #111;
+  appearance: none;
+  cursor: pointer;
+}
+
+.field select:focus {
+  outline: 1px solid #111;
+}
+
+.field-row {
+  display: flex;
+  gap: 14px;
+}
+
+.field-row .field {
+  flex: 1;
+}
+
+.daytype {
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+}
+
+.daytype label {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── DIVIDER ──────────────────────────────────────── */
+
+hr {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 28px 0;
+}
+
+/* ── STATUS / ERROR ───────────────────────────────── */
+
+.status {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 12px;
+}
+
+.error {
+  font-size: 13px;
+  color: #c00;
+  margin-bottom: 16px;
+}
