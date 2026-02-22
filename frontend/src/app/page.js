@@ -9,8 +9,12 @@ export default function Home() {
   const [arriveHour, setArriveHour] = useState(9);
   const [arriveMinute, setArriveMinute] = useState(0);
   const [isWeekday, setIsWeekday] = useState(true);
+
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // ── INIT ───────────────────────────────────────────
   useEffect(() => {
     fetch("/api/stations")
       .then((r) => r.json())
@@ -24,6 +28,57 @@ export default function Home() {
       .catch(() => setError("Failed to load stations. Is the API running?"));
   }, []);
 
+  // ── FORECAST ───────────────────────────────────────
+  useEffect(() => {
+    if (!origin || !destination || origin === destination) {
+      setResult(null);
+      return;
+    }
+
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const resp = await fetch("/api/leave-by", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin,
+            destination,
+            arrive_by_hour: arriveHour,
+            arrive_by_minute: arriveMinute,
+            is_weekday: isWeekday,
+            confidence: 0.85,
+          }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.detail || "Forecast failed.");
+        }
+
+        const data = await resp.json();
+
+        if (!data.recommendation) {
+          throw new Error("No safe departure found for this route and timeline.");
+        }
+
+        const arriveMins = arriveHour * 60 + arriveMinute;
+        const departMins = arriveMins - data.recommendation.p95_travel_min;
+        setResult({ ...data, exact_depart_mins: departMins });
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timer = setTimeout(run, 50);
+    return () => clearTimeout(timer);
+  }, [origin, destination, arriveHour, arriveMinute, isWeekday]);
+
+  // ── HELPERS ────────────────────────────────────────
   const fmt = (totalMins) => {
     let m = totalMins;
     while (m < 0) m += 1440;
@@ -35,6 +90,37 @@ export default function Home() {
     return `${disp}:${min} ${ampm}`;
   };
 
+  const pct = (p) => `${(p * 100).toFixed(0)}%`;
+
+  // ── HISTOGRAM ──────────────────────────────────────
+  const renderHistogram = () => {
+    const rec = result?.recommendation;
+    if (!rec?.histogram_bins) return null;
+
+    const { histogram_bins: bins, histogram_counts: counts, p95_travel_min: p95 } = rec;
+    const maxCount = Math.max(...counts);
+
+    return (
+      <div className="hist-section">
+        <div className="hist-label">Travel time distribution — 10,000 simulated trips</div>
+        <div className="hist-bars">
+          {counts.map((c, i) => (
+            <div
+              key={i}
+              className={`hist-bar${bins[i] > p95 ? " danger" : ""}`}
+              style={{ height: `${maxCount > 0 ? (c / maxCount) * 100 : 0}%` }}
+            />
+          ))}
+        </div>
+        <div className="hist-axis">
+          <span>{Math.round(bins[0])} min</span>
+          <span>{Math.round(bins[bins.length - 1])} min</span>
+        </div>
+      </div>
+    );
+  };
+
+  // ── RENDER ─────────────────────────────────────────
   return (
     <div className="page">
       <h1>TTC Monte Carlo Risk Simulator</h1>
@@ -95,9 +181,48 @@ export default function Home() {
 
       <hr />
 
+      {loading && <p className="status">Simulating 10,000 trips...</p>}
       {error && <p className="error">{error}</p>}
-      {!error && stations.length === 0 && <p className="status">Loading stations...</p>}
-      {stations.length > 0 && <p className="status">Select a route above to run a simulation.</p>}
+
+      {result && !loading && (
+        <>
+          <div className="depart-time">{fmt(result.exact_depart_mins)}</div>
+          <div className="depart-sub">
+            Depart by to arrive at {result.arrive_by} with 85% confidence
+          </div>
+
+          <table className="result-table">
+            <tbody>
+              <tr>
+                <td>Route</td>
+                <td>{origin} → {destination}</td>
+              </tr>
+              <tr>
+                <td>Travel time (P95)</td>
+                <td>{result.recommendation.p95_travel_min} min</td>
+              </tr>
+              <tr>
+                <td>Travel time (mean)</td>
+                <td>{result.recommendation.mean_travel_min} min</td>
+              </tr>
+              <tr>
+                <td>On-time probability</td>
+                <td className={result.recommendation.prob_on_time < 0.7 ? "warn" : ""}>
+                  {pct(result.recommendation.prob_on_time)}
+                </td>
+              </tr>
+              <tr>
+                <td>Late probability</td>
+                <td className={result.recommendation.prob_late > 0.3 ? "warn" : ""}>
+                  {pct(result.recommendation.prob_late)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {renderHistogram()}
+        </>
+      )}
     </div>
   );
 }
