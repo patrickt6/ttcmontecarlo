@@ -1,21 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Home() {
-  const [origin, setOrigin] = useState("Finch");
-  const [destination, setDestination] = useState("Union");
+  const [stations, setStations] = useState([]);
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
   const [arriveHour, setArriveHour] = useState(9);
   const [arriveMinute, setArriveMinute] = useState(0);
   const [isWeekday, setIsWeekday] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Placeholder stations until API is wired up
-  const stations = [
-    "Finch", "North York Centre", "Sheppard-Yonge", "York Mills",
-    "Lawrence", "Eglinton", "Davisville", "St Clair", "Summerhill",
-    "Rosedale", "Bloor-Yonge", "Wellesley", "College", "TMU",
-    "Queen", "King", "Union",
-  ];
+  useEffect(() => {
+    fetch("/api/stations")
+      .then((r) => r.json())
+      .then((data) => {
+        setStations(data);
+        if (data.length >= 2) {
+          setOrigin("Finch");
+          setDestination("Union");
+        }
+      })
+      .catch(() => setError("Failed to load stations. Is the API running?"));
+  }, []);
+
+  const fmt = (totalMins) => {
+    let m = totalMins;
+    while (m < 0) m += 1440;
+    while (m >= 1440) m -= 1440;
+    const h = Math.floor(m / 60);
+    const min = Math.floor(m % 60).toString().padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    const disp = h % 12 === 0 ? 12 : h % 12;
+    return `${disp}:${min} ${ampm}`;
+  };
 
   return (
     <div className="page">
@@ -28,7 +46,7 @@ export default function Home() {
         <label>Origin</label>
         <select value={origin} onChange={(e) => setOrigin(e.target.value)}>
           {stations.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s.name} value={s.name}>{s.name}</option>
           ))}
         </select>
       </div>
@@ -37,7 +55,7 @@ export default function Home() {
         <label>Destination</label>
         <select value={destination} onChange={(e) => setDestination(e.target.value)}>
           {stations.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s.name} value={s.name}>{s.name}</option>
           ))}
         </select>
       </div>
@@ -47,7 +65,7 @@ export default function Home() {
           <label>Arrive by (hour)</label>
           <select value={arriveHour} onChange={(e) => setArriveHour(parseInt(e.target.value))}>
             {Array.from({ length: 24 }, (_, i) => (
-              <option key={i} value={i}>{i}:00</option>
+              <option key={i} value={i}>{fmt(i * 60)}</option>
             ))}
           </select>
         </div>
@@ -77,7 +95,9 @@ export default function Home() {
 
       <hr />
 
-      <p className="status">Results will appear here once the API is connected.</p>
+      {error && <p className="error">{error}</p>}
+      {!error && stations.length === 0 && <p className="status">Loading stations...</p>}
+      {stations.length > 0 && <p className="status">Select a route above to run a simulation.</p>}
     </div>
   );
 }
