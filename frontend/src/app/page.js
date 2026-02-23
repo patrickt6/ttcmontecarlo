@@ -13,9 +13,15 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [weather, setWeather] = useState(null);
 
   // ── INIT ───────────────────────────────────────────
   useEffect(() => {
+    fetch("/api/weather")
+      .then((r) => r.json())
+      .then((d) => { if (d.available) setWeather(d); })
+      .catch(() => {});
+
     fetch("/api/stations")
       .then((r) => r.json())
       .then((data) => {
@@ -126,6 +132,9 @@ export default function Home() {
       <h1>TTC Monte Carlo Risk Simulator</h1>
       <p className="subtitle">
         Line 1 · 10,000 simulated journeys · historical delays 2014–2025
+        {weather && (
+          <span> · {weather.temperature_c.toFixed(0)}°C, {weather.weather_description.toLowerCase()}{weather.risk_level !== "NORMAL" ? ` · ${weather.risk_level.toLowerCase()} delay risk` : ""}</span>
+        )}
       </p>
 
       <div className="field">
