@@ -9,6 +9,7 @@ Endpoints:
     POST /api/simulate     — Run Monte Carlo simulation for a route
     GET  /api/risk-matrix  — Avg delay per (station, hour) for Line 1
     GET  /api/weather      — Current Toronto weather + historical risk multiplier
+    POST /api/leave-by     — Latest safe departure time for a required confidence level
     GET  /health           — Health check
 
 Usage:
@@ -294,6 +295,76 @@ async def get_weather():
         "risk_level": risk_level,
         "condition_avg_delay_min": round(condition_avg, 1),
         "overall_avg_delay_min": round(overall_avg, 1),
+    }
+
+
+class LeaveByRequest(BaseModel):
+    origin: str = Field(..., examples=["Finch"])
+    destination: str = Field(..., examples=["Union"])
+    arrive_by_hour: int = Field(..., ge=0, le=23, examples=[9])
+    arrive_by_minute: int = Field(0, ge=0, le=59, examples=[0])
+    is_weekday: bool = Field(True)
+    confidence: float = Field(0.8, ge=0.5, le=0.99)
+
+
+@app.post("/api/leave-by")
+async def leave_by(req: LeaveByRequest):
+    """
+    Scan all departure hours and return the latest one that satisfies
+    the required on-time confidence level.
+    """
+    if _simulator is None:
+        raise HTTPException(status_code=503, detail="Data not loaded yet")
+
+    try:
+        route = get_route(req.origin, req.destination, LINE_1_STATIONS)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    n_segments = len(route) - 1
+    baseline = n_segments * BASELINE_SEGMENT_TIME
+    arrive_by_total_min = req.arrive_by_hour * 60 + req.arrive_by_minute
+
+    results = []
+    for depart_hour in range(24):
+        depart_total_min = depart_hour * 60
+        max_travel = arrive_by_total_min - depart_total_min
+        if max_travel < 0:
+            max_travel += 24 * 60
+        if max_travel < baseline:
+            continue
+
+        travel_times = _simulator.simulate(
+            origin=req.origin,
+            destination=req.destination,
+            departure_hour=depart_hour,
+            is_weekday=req.is_weekday,
+            line=LINE_1_STATIONS,
+        )
+        stats = _simulator.summary_stats(travel_times, max_travel)
+        hist_counts, hist_edges = np.histogram(travel_times, bins=50, density=True)
+
+        results.append({
+            "depart_hour": depart_hour,
+            "max_travel_min": round(max_travel, 1),
+            "prob_on_time": round(stats["prob_on_time"], 4),
+            "prob_late": round(stats["prob_late"], 4),
+            "mean_travel_min": round(stats["mean_travel_min"], 1),
+            "p95_travel_min": round(stats["p95_travel_min"], 1),
+            "histogram_bins": [round(float(x), 2) for x in hist_edges.tolist()],
+            "histogram_counts": [round(float(x), 6) for x in hist_counts.tolist()],
+        })
+
+    results.sort(key=lambda r: r["depart_hour"], reverse=True)
+    recommendation = next((r for r in results if r["prob_on_time"] >= req.confidence), None)
+
+    return {
+        "origin": req.origin,
+        "destination": req.destination,
+        "arrive_by": f"{req.arrive_by_hour:02d}:{req.arrive_by_minute:02d}",
+        "confidence": req.confidence,
+        "recommendation": recommendation,
+        "all_options": sorted(results, key=lambda r: r["depart_hour"]),
     }
 
 
