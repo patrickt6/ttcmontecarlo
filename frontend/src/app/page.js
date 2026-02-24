@@ -80,7 +80,7 @@ export default function Home() {
       }
     };
 
-    const timer = setTimeout(run, 50);
+    const timer = setTimeout(run, 300);
     return () => clearTimeout(timer);
   }, [origin, destination, arriveHour, arriveMinute, isWeekday]);
 
