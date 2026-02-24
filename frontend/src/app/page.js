@@ -98,6 +98,12 @@ export default function Home() {
 
   const pct = (p) => `${(p * 100).toFixed(0)}%`;
 
+  const riskRating = (probOnTime) => {
+    if (probOnTime >= 0.85) return "low";
+    if (probOnTime >= 0.70) return "moderate";
+    return "high";
+  };
+
   // ── HISTOGRAM ──────────────────────────────────────
   const renderHistogram = () => {
     const rec = result?.recommendation;
@@ -224,6 +230,12 @@ export default function Home() {
                 <td>Late probability</td>
                 <td className={result.recommendation.prob_late > 0.3 ? "warn" : ""}>
                   {pct(result.recommendation.prob_late)}
+                </td>
+              </tr>
+              <tr>
+                <td>Risk rating</td>
+                <td className={riskRating(result.recommendation.prob_on_time) === "high" ? "warn" : ""}>
+                  {riskRating(result.recommendation.prob_on_time)}
                 </td>
               </tr>
             </tbody>
