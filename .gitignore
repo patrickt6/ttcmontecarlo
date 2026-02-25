@@ -21,8 +21,11 @@ env/
 
 # Data (large files — download via ETL scripts)
 data/raw/
-data/processed/
 data/simulation/
+data/processed/*.csv
+
+# Parquet is committed for Railway deployment (1.1MB)
+!data/processed/delays_clean.parquet
 
 # Output (generated)
 output/*.png
