@@ -71,6 +71,26 @@ h1 {
   flex: 1;
 }
 
+.field-now {
+  flex: 0;
+  white-space: nowrap;
+}
+
+.now-btn {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid #bbb;
+  background: none;
+  cursor: pointer;
+  color: #111;
+}
+
+.now-btn:hover {
+  background: #111;
+  color: #fff;
+}
+
 .daytype {
   display: flex;
   gap: 20px;

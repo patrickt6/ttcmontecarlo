@@ -6,8 +6,11 @@ export default function Home() {
   const [stations, setStations] = useState([]);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
-  const [arriveHour, setArriveHour] = useState(9);
-  const [arriveMinute, setArriveMinute] = useState(0);
+  const [arriveHour, setArriveHour] = useState(() => new Date().getHours());
+  const [arriveMinute, setArriveMinute] = useState(() => {
+    const m = new Date().getMinutes();
+    return Math.round(m / 5) * 5 % 60;
+  });
   const [isWeekday, setIsWeekday] = useState(true);
 
   const [loading, setLoading] = useState(false);
@@ -98,6 +101,12 @@ export default function Home() {
 
   const pct = (p) => `${(p * 100).toFixed(0)}%`;
 
+  const resetToNow = () => {
+    const now = new Date();
+    setArriveHour(now.getHours());
+    setArriveMinute(Math.round(now.getMinutes() / 5) * 5 % 60);
+  };
+
   const riskRating = (probOnTime) => {
     if (probOnTime >= 0.85) return "low";
     if (probOnTime >= 0.70) return "moderate";
@@ -177,6 +186,10 @@ export default function Home() {
               <option key={m} value={m}>{m.toString().padStart(2, "0")}</option>
             ))}
           </select>
+        </div>
+        <div className="field field-now">
+          <label>&nbsp;</label>
+          <button className="now-btn" onClick={resetToNow}>now</button>
         </div>
       </div>
 
