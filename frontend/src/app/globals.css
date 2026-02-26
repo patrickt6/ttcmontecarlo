@@ -340,3 +340,11 @@ hr {
   color: #999;
   margin-top: 4px;
 }
+
+/* ── CREDIT ───────────────────────────────────────── */
+
+.credit {
+  margin-top: 48px;
+  font-size: 13px;
+  color: #666;
+}

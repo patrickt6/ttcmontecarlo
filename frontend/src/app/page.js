@@ -401,6 +401,9 @@ export default function Home() {
           )}
         </>
       )}
+      <p className="credit">
+        By <a href="https://patrickmtaylor.com" target="_blank" rel="noopener noreferrer">Patrick Taylor</a> <em>(<a href="https://github.com/patrickt6/ttcmontecarlo" target="_blank" rel="noopener noreferrer">github</a>)</em>
+      </p>
     </div>
   );
 }
