@@ -88,10 +88,16 @@ h1 {
   color: #888;
 }
 
-.picker-tab.active {
-  background: #111;
+.picker-tab.active.origin-mode {
+  background: #1d4ed8;
   color: #fff;
-  border-color: #111;
+  border-color: #1d4ed8;
+}
+
+.picker-tab.active.dest-mode {
+  background: #15803d;
+  color: #fff;
+  border-color: #15803d;
 }
 
 .picker-arrow {

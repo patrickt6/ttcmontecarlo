@@ -252,12 +252,12 @@ export default function Home() {
         <div className="picker-controls">
           <span className="picker-label">Select</span>
           <button
-            className={`picker-tab${selectionMode === "origin" ? " active" : ""}`}
+            className={`picker-tab origin-mode${selectionMode === "origin" ? " active" : ""}`}
             onClick={() => setSelectionMode("origin")}
           >origin</button>
           <span className="picker-arrow">→</span>
           <button
-            className={`picker-tab${selectionMode === "destination" ? " active" : ""}`}
+            className={`picker-tab dest-mode${selectionMode === "destination" ? " active" : ""}`}
             onClick={() => setSelectionMode("destination")}
           >destination</button>
         </div>
