@@ -2,10 +2,58 @@
 
 import { useState, useEffect } from "react";
 
+// Line 1 station order for visual picker
+// University branch: displayed top (VMC) to bottom (Union)
+const UNIVERSITY_BRANCH = [
+  "Vaughan Metropolitan Centre",
+  "Highway 407",
+  "Pioneer Village",
+  "York University",
+  "Finch West",
+  "Downsview Park",
+  "Sheppard West",
+  "Wilson",
+  "Yorkdale",
+  "Lawrence West",
+  "Glencairn",
+  "Cedarvale",
+  "St Clair West",
+  "Dupont",
+  "Spadina",
+  "St George",
+  "Museum",
+  "Queen's Park",
+  "St Patrick",
+  "Osgoode",
+  "St Andrew",
+  "Union",
+];
+
+// Yonge branch: displayed top (Finch) to bottom (Union)
+const YONGE_BRANCH = [
+  "Finch",
+  "North York Centre",
+  "Sheppard-Yonge",
+  "York Mills",
+  "Lawrence",
+  "Eglinton",
+  "Davisville",
+  "St Clair",
+  "Summerhill",
+  "Rosedale",
+  "Bloor-Yonge",
+  "Wellesley",
+  "College",
+  "TMU",
+  "Queen",
+  "King",
+  "Union",
+];
+
 export default function Home() {
-  const [stations, setStations] = useState([]);
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
+  const [origin, setOrigin] = useState("Finch");
+  const [destination, setDestination] = useState("Union");
+  const [selectionMode, setSelectionMode] = useState("origin");
   const [arriveHour, setArriveHour] = useState(() => new Date().getHours());
   const [arriveMinute, setArriveMinute] = useState(() => {
     const m = new Date().getMinutes();
@@ -24,17 +72,6 @@ export default function Home() {
       .then((r) => r.json())
       .then((d) => { if (d.available) setWeather(d); })
       .catch(() => {});
-
-    fetch("/api/stations")
-      .then((r) => r.json())
-      .then((data) => {
-        setStations(data);
-        if (data.length >= 2) {
-          setOrigin("Finch");
-          setDestination("Union");
-        }
-      })
-      .catch(() => setError("Failed to load stations. Is the API running?"));
   }, []);
 
   // ── FORECAST ───────────────────────────────────────
@@ -113,6 +150,30 @@ export default function Home() {
     return "high";
   };
 
+  // ── STATION PICKER ─────────────────────────────────
+  const handleStationClick = (name) => {
+    if (selectionMode === "origin") {
+      setOrigin(name);
+      if (name === destination) setDestination("");
+      setSelectionMode("destination");
+    } else {
+      if (name === origin) return;
+      setDestination(name);
+      setSelectionMode("origin");
+    }
+  };
+
+  const renderBranch = (stations, prefix) =>
+    stations.map((s) => (
+      <button
+        key={`${prefix}-${s}`}
+        className={`map-station${origin === s ? " is-origin" : ""}${destination === s ? " is-dest" : ""}`}
+        onClick={() => handleStationClick(s)}
+      >
+        {s}
+      </button>
+    ));
+
   // ── HISTOGRAM ──────────────────────────────────────
   const renderHistogram = () => {
     const rec = result?.recommendation;
@@ -152,22 +213,34 @@ export default function Home() {
         )}
       </p>
 
-      <div className="field">
-        <label>Origin</label>
-        <select value={origin} onChange={(e) => setOrigin(e.target.value)}>
-          {stations.map((s) => (
-            <option key={s.name} value={s.name}>{s.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="field">
-        <label>Destination</label>
-        <select value={destination} onChange={(e) => setDestination(e.target.value)}>
-          {stations.map((s) => (
-            <option key={s.name} value={s.name}>{s.name}</option>
-          ))}
-        </select>
+      <div className="station-picker">
+        <div className="picker-controls">
+          <span className="picker-label">Select</span>
+          <button
+            className={`picker-tab${selectionMode === "origin" ? " active" : ""}`}
+            onClick={() => setSelectionMode("origin")}
+          >origin</button>
+          <span className="picker-arrow">→</span>
+          <button
+            className={`picker-tab${selectionMode === "destination" ? " active" : ""}`}
+            onClick={() => setSelectionMode("destination")}
+          >destination</button>
+        </div>
+        {origin && destination && (
+          <div className="picker-summary">
+            {origin} → {destination}
+          </div>
+        )}
+        <div className="map-cols">
+          <div className="map-col">
+            <div className="map-col-label">University</div>
+            {renderBranch(UNIVERSITY_BRANCH, "univ")}
+          </div>
+          <div className="map-col">
+            <div className="map-col-label">Yonge</div>
+            {renderBranch(YONGE_BRANCH, "yonge")}
+          </div>
+        </div>
       </div>
 
       <div className="field-row">

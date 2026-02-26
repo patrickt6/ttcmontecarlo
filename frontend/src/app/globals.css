@@ -33,6 +33,110 @@ h1 {
 
 /* ── FORM ─────────────────────────────────────────── */
 
+/* ── STATION PICKER ───────────────────────────────── */
+
+.station-picker {
+  margin-bottom: 20px;
+}
+
+.picker-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.picker-label {
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+
+.picker-tab {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 7px;
+  border: 1px solid #bbb;
+  background: none;
+  cursor: pointer;
+  color: #888;
+}
+
+.picker-tab.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.picker-arrow {
+  color: #bbb;
+  font-size: 11px;
+}
+
+.picker-summary {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.map-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.map-col-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  margin-bottom: 4px;
+  padding-left: 4px;
+}
+
+.map-station {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #111;
+  line-height: 1.5;
+}
+
+.map-station:hover {
+  background: #f0f0f0;
+}
+
+.map-station.is-origin {
+  background: #111;
+  color: #fff;
+}
+
+.map-station.is-dest {
+  background: #555;
+  color: #fff;
+}
+
+.map-station.is-origin:hover,
+.map-station.is-dest:hover {
+  opacity: 0.85;
+}
+
+@media (max-width: 480px) {
+  .map-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── FORM ─────────────────────────────────────────── */
+
 .field {
   margin-bottom: 14px;
 }
