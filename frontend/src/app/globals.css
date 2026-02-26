@@ -33,6 +33,30 @@ h1 {
 
 /* ── FORM ─────────────────────────────────────────── */
 
+/* ── MODE TOGGLE ──────────────────────────────────── */
+
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+}
+
+.mode-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 14px;
+  border: 1px solid #bbb;
+  background: none;
+  cursor: pointer;
+  color: #888;
+}
+
+.mode-btn.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
 /* ── STATION PICKER ───────────────────────────────── */
 
 .station-picker {

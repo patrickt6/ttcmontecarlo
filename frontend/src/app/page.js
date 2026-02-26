@@ -2,8 +2,6 @@
 
 import { useState, useEffect } from "react";
 
-// Line 1 station order for visual picker
-// University branch: displayed top (VMC) to bottom (Union)
 const UNIVERSITY_BRANCH = [
   "Vaughan Metropolitan Centre",
   "Highway 407",
@@ -29,7 +27,6 @@ const UNIVERSITY_BRANCH = [
   "Union",
 ];
 
-// Yonge branch: displayed top (Finch) to bottom (Union)
 const YONGE_BRANCH = [
   "Finch",
   "North York Centre",
@@ -50,15 +47,22 @@ const YONGE_BRANCH = [
   "Union",
 ];
 
+const defaultArriveBy = () => {
+  const now = new Date();
+  const total = now.getHours() * 60 + now.getMinutes() + 45;
+  return {
+    hour: Math.floor(total / 60) % 24,
+    minute: Math.round((total % 60) / 5) * 5 % 60,
+  };
+};
+
 export default function Home() {
+  const [mode, setMode] = useState("leave-now");
   const [origin, setOrigin] = useState("Finch");
   const [destination, setDestination] = useState("Union");
   const [selectionMode, setSelectionMode] = useState("origin");
-  const [arriveHour, setArriveHour] = useState(() => new Date().getHours());
-  const [arriveMinute, setArriveMinute] = useState(() => {
-    const m = new Date().getMinutes();
-    return Math.round(m / 5) * 5 % 60;
-  });
+  const [arriveHour, setArriveHour] = useState(() => defaultArriveBy().hour);
+  const [arriveMinute, setArriveMinute] = useState(() => defaultArriveBy().minute);
   const [isWeekday, setIsWeekday] = useState(true);
 
   const [loading, setLoading] = useState(false);
@@ -86,33 +90,56 @@ export default function Home() {
       setError(null);
 
       try {
-        const resp = await fetch("/api/leave-by", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            origin,
-            destination,
-            arrive_by_hour: arriveHour,
-            arrive_by_minute: arriveMinute,
-            is_weekday: isWeekday,
-            confidence: 0.85,
-          }),
-        });
+        let data;
 
-        if (!resp.ok) {
-          const err = await resp.json();
-          throw new Error(err.detail || "Forecast failed.");
+        if (mode === "leave-now") {
+          const now = new Date();
+          const resp = await fetch("/api/simulate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              origin,
+              destination,
+              hour: now.getHours(),
+              is_weekday: isWeekday,
+              threshold: 9999,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || "Simulation failed.");
+          }
+          const sim = await resp.json();
+          const departMins = now.getHours() * 60 + now.getMinutes();
+          data = { type: "leave-now", depart_mins: departMins, ...sim };
+
+        } else {
+          const resp = await fetch("/api/leave-by", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              origin,
+              destination,
+              arrive_by_hour: arriveHour,
+              arrive_by_minute: arriveMinute,
+              is_weekday: isWeekday,
+              confidence: 0.85,
+            }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || "Forecast failed.");
+          }
+          const leaveBy = await resp.json();
+          if (!leaveBy.recommendation) {
+            throw new Error("No safe departure found for this route and timeline.");
+          }
+          const arriveMins = arriveHour * 60 + arriveMinute;
+          const departMins = arriveMins - leaveBy.recommendation.p95_travel_min;
+          data = { type: "arrive-by", exact_depart_mins: departMins, ...leaveBy };
         }
 
-        const data = await resp.json();
-
-        if (!data.recommendation) {
-          throw new Error("No safe departure found for this route and timeline.");
-        }
-
-        const arriveMins = arriveHour * 60 + arriveMinute;
-        const departMins = arriveMins - data.recommendation.p95_travel_min;
-        setResult({ ...data, exact_depart_mins: departMins });
+        setResult(data);
       } catch (e) {
         setError(e.message);
       } finally {
@@ -122,7 +149,7 @@ export default function Home() {
 
     const timer = setTimeout(run, 300);
     return () => clearTimeout(timer);
-  }, [origin, destination, arriveHour, arriveMinute, isWeekday]);
+  }, [origin, destination, arriveHour, arriveMinute, isWeekday, mode]);
 
   // ── HELPERS ────────────────────────────────────────
   const fmt = (totalMins) => {
@@ -139,9 +166,9 @@ export default function Home() {
   const pct = (p) => `${(p * 100).toFixed(0)}%`;
 
   const resetToNow = () => {
-    const now = new Date();
-    setArriveHour(now.getHours());
-    setArriveMinute(Math.round(now.getMinutes() / 5) * 5 % 60);
+    const { hour, minute } = defaultArriveBy();
+    setArriveHour(hour);
+    setArriveMinute(minute);
   };
 
   const riskRating = (probOnTime) => {
@@ -175,11 +202,8 @@ export default function Home() {
     ));
 
   // ── HISTOGRAM ──────────────────────────────────────
-  const renderHistogram = () => {
-    const rec = result?.recommendation;
-    if (!rec?.histogram_bins) return null;
-
-    const { histogram_bins: bins, histogram_counts: counts, p95_travel_min: p95 } = rec;
+  const renderHistogram = (bins, counts, p95) => {
+    if (!bins || !counts) return null;
     const maxCount = Math.max(...counts);
 
     return (
@@ -213,6 +237,17 @@ export default function Home() {
         )}
       </p>
 
+      <div className="mode-toggle">
+        <button
+          className={`mode-btn${mode === "leave-now" ? " active" : ""}`}
+          onClick={() => { setMode("leave-now"); setResult(null); }}
+        >Leave now</button>
+        <button
+          className={`mode-btn${mode === "arrive-by" ? " active" : ""}`}
+          onClick={() => { setMode("arrive-by"); setResult(null); }}
+        >Arrive by</button>
+      </div>
+
       <div className="station-picker">
         <div className="picker-controls">
           <span className="picker-label">Select</span>
@@ -227,9 +262,7 @@ export default function Home() {
           >destination</button>
         </div>
         {origin && destination && (
-          <div className="picker-summary">
-            {origin} → {destination}
-          </div>
+          <div className="picker-summary">{origin} → {destination}</div>
         )}
         <div className="map-cols">
           <div className="map-col">
@@ -243,28 +276,30 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label>Arrive by (hour)</label>
-          <select value={arriveHour} onChange={(e) => setArriveHour(parseInt(e.target.value))}>
-            {Array.from({ length: 24 }, (_, i) => (
-              <option key={i} value={i}>{fmt(i * 60)}</option>
-            ))}
-          </select>
+      {mode === "arrive-by" && (
+        <div className="field-row">
+          <div className="field">
+            <label>Arrive by (hour)</label>
+            <select value={arriveHour} onChange={(e) => setArriveHour(parseInt(e.target.value))}>
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={i}>{fmt(i * 60)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Arrive by (minute)</label>
+            <select value={arriveMinute} onChange={(e) => setArriveMinute(parseInt(e.target.value))}>
+              {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                <option key={m} value={m}>{m.toString().padStart(2, "0")}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field field-now">
+            <label>&nbsp;</label>
+            <button className="now-btn" onClick={resetToNow}>now</button>
+          </div>
         </div>
-        <div className="field">
-          <label>Arrive by (minute)</label>
-          <select value={arriveMinute} onChange={(e) => setArriveMinute(parseInt(e.target.value))}>
-            {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
-              <option key={m} value={m}>{m.toString().padStart(2, "0")}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field field-now">
-          <label>&nbsp;</label>
-          <button className="now-btn" onClick={resetToNow}>now</button>
-        </div>
-      </div>
+      )}
 
       <div className="field">
         <label>Day type</label>
@@ -285,7 +320,39 @@ export default function Home() {
       {loading && <p className="status">Simulating 10,000 trips...</p>}
       {error && <p className="error">{error}</p>}
 
-      {result && !loading && (
+      {result && !loading && result.type === "leave-now" && (
+        <>
+          <div className="depart-time">{fmt(result.depart_mins + result.mean_travel_min)}</div>
+          <div className="depart-sub">
+            Likely arrival · worst case {fmt(result.depart_mins + result.p95_travel_min)} (P95)
+          </div>
+
+          <table className="result-table">
+            <tbody>
+              <tr>
+                <td>Route</td>
+                <td>{origin} → {destination}</td>
+              </tr>
+              <tr>
+                <td>Mean travel time</td>
+                <td>{result.mean_travel_min} min</td>
+              </tr>
+              <tr>
+                <td>P95 travel time</td>
+                <td>{result.p95_travel_min} min</td>
+              </tr>
+              <tr>
+                <td>Baseline (no delays)</td>
+                <td>{result.baseline_min} min</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {renderHistogram(result.histogram_bins, result.histogram_counts, result.p95_travel_min)}
+        </>
+      )}
+
+      {result && !loading && result.type === "arrive-by" && (
         <>
           <div className="depart-time">{fmt(result.exact_depart_mins)}</div>
           <div className="depart-sub">
@@ -327,7 +394,11 @@ export default function Home() {
             </tbody>
           </table>
 
-          {renderHistogram()}
+          {renderHistogram(
+            result.recommendation.histogram_bins,
+            result.recommendation.histogram_counts,
+            result.recommendation.p95_travel_min
+          )}
         </>
       )}
     </div>
