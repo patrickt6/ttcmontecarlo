@@ -1,6 +1,14 @@
-# TTC Monte Carlo Risk Simulator
+<p align="center">
+  <img src="docs/banner.png" alt="TTC Monte Carlo: if I leave station X at time Y, will I arrive on time? Monte Carlo trips built from historical TTC subway delays." width="800">
+</p>
 
-A statistical engine for quantifying transit reliability on the Toronto Transit Commission subway network using Monte Carlo simulation.
+<p align="center">
+  <img src="docs/how-it-works.png" alt="How TTC Monte Carlo works: TTC open data delay records from 2014 to 2025, delay distributions by station, hour and day type, 10,000 simulated runs per journey, and the latest departure that arrives on time with 85% confidence" width="800">
+</p>
+
+**[Open the live site](https://ttcmontecarlo.vercel.app)**
+
+Pick a start station, an end station and a departure time. The simulator gives the probability that you arrive on time, from 171,973 historical delay records (2014 to 2025) on the Toronto Open Data portal. It is a Monte Carlo simulation of the Toronto Transit Commission subway network.
 
 Answers one question: **if I leave station X at time Y, what is the probability I arrive at station Z on time?**
 
